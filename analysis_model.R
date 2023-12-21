@@ -1,135 +1,202 @@
-library(glmnet)
+#########Main analysis code for "Longitudinal serum proteome for healthy ageing and related cardiometabolic diesease"
+
+####load packages
+library(glmmLasso)
 library(randomForest)
 library(vegan)
 library(pROC)
-library(sampling)
-library(dplyr)
 library(ggplot2)
-library(splines)
+
+########## GLMMLasso model ##########
+phase1 <- read.csv("GNHS_discovery.csv",header=TRUE)
+phase2 <- read.csv("GNHS_validation.csv",header=TRUE)
+fh <- read.csv("external_validation.csv",header=TRUE)                                                                                   
+
+set.seed(666)
+phase1train<-subset(phase1,pair==123)
+phase1test<-subset(phase1,pair!=123)
+phase1train<-phase1train[,c(3,6:93)]
+phase1test<-phase1test[,c(3,6:93)]
+
+phase1$code_id<-as.factor(phase1$code_id)
+phase1train$code_id<-as.factor(phase1train$code_id)
+phase1test$code_id<-as.factor(phase1test$code_id)
+phase2$code_id<-as.factor(phase2$code_id)
+fh$code_id<-as.factor(fh$code_id)
+
+phase1$sexadj<-as.factor(phase1$sexadj)
+phase1train$sexadj<-as.factor(phase1train$sexadj)
+phase1test$sexadj<-as.factor(phase1test$sexadj)
+phase2$sexadj<-as.factor(phase2$sexadj)
+fh$sexadj<-as.factor(fh$sexadj)
 
 
-########## LASSO model ##########
-phase1 <- read.csv("phase1.csv",header=TRUE)
-phase2 <- read.csv("phase2.csv",header=TRUE)
-fh <- read.csv("fh.csv",header=TRUE)                                                                                   
+###aic for optimal lambda
+###initial model
+PQL<-glmmPQL(ageadj~1,random = ~1|code_id,family=gaussian(link="identity"),data=phase1train)
+Delta.start<-c(as.numeric(PQL$coef$fixed),rep(0,87),as.numeric(t(PQL$coef$random$code_id)))
+Delta.start
+Q.start<-as.numeric(VarCorr(PQL)[1,1])
+Q.start
+
+lambda <- seq(1500,300,by=-10)
+AIC_vec <- rep(Inf,length(lambda))
+Devianz_ma<-NULL
+Coeff_ma<-NULL
 
 
-set.seed(123)
-phase1_train <- phase1 %>% group_by(id) %>% sample_n(size = 1)
-phase1_test <- phase1[!phase1$idtime %in% phase1_train$idtime,]
-
-xtrain=as.matrix(phase1_train[,4:90])
-ytrain=as.matrix(phase1_train[,3])
-xtestphase1 <- as.matrix(phase1_test[,4:90])
-xtestphase1all<<- as.matrix(phase1[,4:90]) 
-xtestphase2<- as.matrix(phase2[,4:90])
-xtestfh<- as.matrix(fh[,4:90])
-
-fit = glmnet(xtrain, ytrain, family="gaussian", nlambda=100, alpha=1)
-print(fit)
-plot(fit, xvar="lambda", label=FALSE)
-fitcsv<-cbind.data.frame(fit$df,fit$dev.ratio,fit$lambda)
-write.csv(fitcsv,file="fit.csv")
-
-cvfit=cv.glmnet(xtrain,ytrain,nfolds=10)
-plot(cvfit)
-cvfit$lambda.min
-cvfit$lambda.1se
-print(cvfit)
-cvfit
-
-ypredictphase1<-data.frame(phase1_test[,c(1,3)]) 
-ypredictphase1all<-data.frame(phase1[,c(1,2,3)]) 
-ypredictphase2<-data.frame(phase2[,c(1,3)]) 
-ypredictfh<-data.frame(fh[,c(1,3)]) 
-
-coefpro=as.data.frame(1:88,)
-colnames(coefpro)[1]<-"logpro"
-
-lambdalist<-read.csv("fit.csv")
-
-for (i in 1:31) {
-  x=lambdalist[i,4]
-  ypredictphase1now<- predict(cvfit,newx=xtestphase1, s=x)
-  ypredictphase2now<- predict(cvfit,newx=xtestphase2, s=x)
-  ypredictfhnow<- predict(cvfit,newx=xtestfh, s=x)
-  ypredictphase1<-cbind(ypredictphase1,ypredictphase1now) 
-  ypredictphase2<-cbind(ypredictphase2,ypredictphase2now)
-  ypredictfh<-cbind(ypredictfh,ypredictfhnow)
+for(j in 1:length(lambda))
+{
+  print(paste("Iteration ", j,sep=""))
   
-  ypredictcoefnow<-predict(cvfit, type="coefficients",newx=xtestphase1, s=x)
-  coef<-as.matrix(ypredictcoefnow) 
-  pro<-row.names(coef) 
-  coefpro<-cbind(coefpro,coef)  
+  glm1 <- try(glmmLasso(ageadj~sexadj+stdloga0a0b4j1x5+stdloga0a0c4dh34+stdloga6nfn9+ stdlogo14791 +stdlogo43866+ stdlogo95445 +stdlogp00734+
+                          stdlogp00739+ stdlogp00740+ stdlogp00746 +stdlogp00747+ stdlogp00748+ stdlogp00915+ stdlogp01009+ stdlogp01023+ 
+                          stdlogp01024+ stdlogp01031+ stdlogp01344+ stdlogp01602 +stdlogp01619 +stdlogp01780+ stdlogp01860+ stdlogp01871+
+                          stdlogp01876+ stdlogp02654+ stdlogp02671 +stdlogp02743 +stdlogp02748 +stdlogp02749+ stdlogp02750+ stdlogp02751+
+                          stdlogp02760 +stdlogp02765+ stdlogp02774 +stdlogp02775 +stdlogp02787 +stdlogp02790+ stdlogp03952 +stdlogp04004+
+                          stdlogp04114+ stdlogp04180 +stdlogp04275 +stdlogp05154 +stdlogp05155 +stdlogp05156 +stdlogp06312 +stdlogp06727+
+                          stdlogp08697+ stdlogp0dji8 +stdlogp10643 +stdlogp14151 +stdlogp15814 +stdlogp17936 +stdlogp18428+ stdlogp19827+
+                          stdlogp23142+ stdlogp27169 +stdlogp33076 +stdlogp35858 +stdlogp36955 +stdlogp43652 +stdlogp49406 +stdlogp49908+
+                          stdlogp51884+ stdlogp55056 +stdlogp68871+ stdlogp69905 +stdlogq06033 +stdlogq12756 +stdlogq15848 +stdlogq16880+
+                          stdlogq562r1+ stdlogq5jvf3+ stdlogq5u651+ stdlogq75n90 +stdlogq8n9b5+ stdlogq8nce0+ stdlogq92185 +stdlogq96ap0+
+                          stdlogq99684+ stdlogq9brj2 +stdlogq9nq79+ stdlogq9p278 +stdlogq9p2d8 +stdlogq9upu7 +stdlogq9y613,
+                        rnd = list(code_id=~1),family=gaussian(link="identity"), data = phase1train, lambda=lambda[j],switch.NR=FALSE,final.re=FALSE,
+                        control=list(start=Delta.start,q_start=Q.start)), silent=FALSE)  ###silent=TRUE为try函数隐藏错误信息
+  
+  if(!inherits(glm1, "try-error"))
+  {  
+    AIC_vec[j]<-glm1$aic
+  }
 }
 
-write.csv(coefpro,file="coefpro.csv")
+AIC_vec
+which.min(AIC_vec)
+lambda[which.min(AIC_vec)]
 
-###model performance
-rypredictphase1<-data.frame(matrix(nrow=31,ncol=1))
-colnames(rypredictphase1)[1]<-"rphase1"
-rypredictphase2<-rypredictphase1
-colnames(rypredictphase2)[1]<-"rphase2"
-rypredictfh<-rypredictphase1
-colnames(rypredictfh)[1]<-"rfh"
+final_lambda<-lambda[which.min(AIC_vec)]
 
-for (i in 3:33) {
-  r=cor(ypredictphase1[,2],ypredictphase1[,i],method="pearson")
-  rypredictphase1[i-2,1]<-r
+###performance of GLMMLasso models
+ypredictphase1test<-data.frame(phase1test[,2]) 
+colnames(ypredictphase1test)[1]<-"ageadj"
+ypredictphase2<-data.frame(phase2[,6]) 
+colnames(ypredictphase2)[1]<-"ageadj"
+ypredictfh<-data.frame(fh[,6]) 
+colnames(ypredictfh)[1]<-"ageadj"
+
+lambda <- seq(1500,300,by=-10)
+coefpro<-data.frame(matrix(nrow=88,ncol=1)) 
+colnames(coefpro)[1]<-"var"
+accu<-data.frame(matrix(nrow=length(lambda),ncol=8))
+colnames(accu)<-c("lambda","nvar","rphase1test","maephase1test","rphase2","maephase2","rfh","maefh")
+
+for (i in 1:length(lambda)) {
+glm_final <- glmmLasso(ageadj~sexadj+stdloga0a0b4j1x5+stdloga0a0c4dh34+stdloga6nfn9+ stdlogo14791 +stdlogo43866+ stdlogo95445 +stdlogp00734+
+                          stdlogp00739+ stdlogp00740+ stdlogp00746 +stdlogp00747+ stdlogp00748+ stdlogp00915+ stdlogp01009+ stdlogp01023+ 
+                          stdlogp01024+ stdlogp01031+ stdlogp01344+ stdlogp01602 +stdlogp01619 +stdlogp01780+ stdlogp01860+ stdlogp01871+
+                          stdlogp01876+ stdlogp02654+ stdlogp02671 +stdlogp02743 +stdlogp02748 +stdlogp02749+ stdlogp02750+ stdlogp02751+
+                          stdlogp02760 +stdlogp02765+ stdlogp02774 +stdlogp02775 +stdlogp02787 +stdlogp02790+ stdlogp03952 +stdlogp04004+
+                          stdlogp04114+ stdlogp04180 +stdlogp04275 +stdlogp05154 +stdlogp05155 +stdlogp05156 +stdlogp06312 +stdlogp06727+
+                          stdlogp08697+ stdlogp0dji8 +stdlogp10643 +stdlogp14151 +stdlogp15814 +stdlogp17936 +stdlogp18428+ stdlogp19827+
+                          stdlogp23142+ stdlogp27169 +stdlogp33076 +stdlogp35858 +stdlogp36955 +stdlogp43652 +stdlogp49406 +stdlogp49908+
+                          stdlogp51884+ stdlogp55056 +stdlogp68871+ stdlogp69905 +stdlogq06033 +stdlogq12756 +stdlogq15848 +stdlogq16880+
+                          stdlogq562r1+ stdlogq5jvf3+ stdlogq5u651+ stdlogq75n90 +stdlogq8n9b5+ stdlogq8nce0+ stdlogq92185 +stdlogq96ap0+
+                          stdlogq99684+ stdlogq9brj2 +stdlogq9nq79+ stdlogq9p278 +stdlogq9p2d8 +stdlogq9upu7 +stdlogq9y613, 
+                        rnd = list(code_id=~1),family=gaussian(link="identity"), data = phase1train, lambda=lambda[i],switch.NR=FALSE,final.re=FALSE,
+                        control=list(start=Delta.start,q_start=Q.start)) 
+
+write.csv(glm_final$coefficients,file="coefficient_bic.csv")
+coef<-read.csv(file="coefficient_bic.csv",header=TRUE)
+coefpro<-cbind(coefpro,coef)
+colnames(coefpro)[2*i+1]<-lambda[i]
+
+####predict
+intercept<-coef[1,2]
+coef<-coef[coef$x!=0,]
+coef[2,1]<-"ageadj"
+coef <- unite(coef, "y",x, X, sep = "*", remove = FALSE)
+
+n<-nrow(coef)
+accu[i,1]<-lambda[i]
+accu[i,2]<-n
+n<-n-1
+
+form<-intercept
+for (j in 2:n) {
+  name=coef[j,1]
+  form<-paste(form,name,sep="+")
 }
 
-for (i in 3:33) {
-  r=cor(ypredictphase2[,2],ypredictphase2[,i],method="pearson")
-  rypredictphase2[i-2,1]<-r
+predictphase1test<-eval(parse(text=gsub("predict =","",form)),phase1test)
+ypredictphase1test<-cbind(ypredictphase1test,predictphase1test)
+
+predictphase2<-eval(parse(text=gsub("predict =","",form)),phase2)
+ypredictphase2<-cbind(ypredictphase2,predictphase2)
+
+predictfh<-eval(parse(text=gsub("predict =","",form)),fh)
+ypredictfh<-cbind(ypredictfh,predictfh)
 }
 
-for (i in 3:33) {
-  r=cor(ypredictfh[,2],ypredictfh[,i],method="pearson")
-  rypredictfh[i-2,1]<-r
+##### Pearson's r
+for (i in 1:length(lambda)) {
+rphase1test<-cor(ypredictphase1test[,1],ypredictphase1test[,i+1],method="pearson")
+rphase2<-cor(ypredictphase2[,1],ypredictphase2[,i+1],method="pearson")
+rfh<-cor(ypredictfh[,1],ypredictfh[,i+1],method="pearson")
+accu[i,3]<-rphase1test
+accu[i,5]<-rphase2
+accu[i,7]<-rfh
 }
+write.csv(accu,file="accu_pearson.csv")
 
-rypredict<-cbind(rypredictphase1,rypredictphase2,rypredictfh)
-write.csv(rypredict,"rypredict.csv")
-
-
-###calculate MAE
-dypredictphase1<-data.frame(matrix(nrow=31,ncol=1))
-colnames(dypredictphase1)[1]<-"mae"
-dypredictphase2<-dypredictphase1
-colnames(dypredictphase2)[1]<-"mae"
-dypredictfh<-dypredictphase1
-colnames(dypredictfh)[1]<-"mae"
-
-
-for (i in 3:33) {
-  ypredictphase1[,i+31]=ypredictphase1[,i]-ypredictphase1[,2]
-  ypredictphase1[,i+31]=abs(ypredictphase1[,i+31])
-  dypredictphase1[i-2,1]<-mean(ypredictphase1[,i+31])
-}
+###plot
+data1<-ypredictphase1test[,c(1,114)]
+r1<-cor(data1[,1],data1[,2],method="pearson")
+r1
+ggplot(data1)+
+  geom_point(aes(x=ageadj,y=predictphase1test),pch=1,color="#0d7091",size=1)+
+  geom_smooth(aes(x=ageadj,y=predictphase1test),method="lm",color="red",fill="grey",se=TRUE)+
+  scale_x_continuous(name="Calendar age",limits=c(40,90),breaks=seq(40,90,10))+
+  scale_y_continuous(name="Predicted age",limits=c(40,90),breaks=seq(40,90,10))+
+  theme_bw() +
+  theme(panel.grid.major=element_line(colour=NA),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        panel.grid.minor = element_blank(),
+        legend.box.background = element_rect(color="black"))
 
 
-for (i in 3:33) {
-  ypredictphase2[,i+31]=ypredictphase2[,i]-ypredictphase2[,2]
-  ypredictphase2[,i+31]=abs(ypredictphase2[,i+31])
-  dypredictphase2[i-2,1]<-mean(ypredictphase2[,i+31])
-}
+data2<-ypredictphase2[,c(1,114)]
+r2<-cor(data2[,1],data2[,2],method="pearson")
+r2
+ggplot(data2)+
+  geom_point(aes(x=ageadj,y=predictphase2),pch=1,color="#0d7091",size=1)+
+  geom_smooth(aes(x=ageadj,y=predictphase2),method="lm",color="red",fill="grey",se=TRUE)+
+  scale_x_continuous(name="Calendar age",limits=c(40,90),breaks=seq(40,90,10))+
+  scale_y_continuous(name="Predicted age",limits=c(40,90),breaks=seq(40,90,10))+
+  theme_bw() +
+  theme(panel.grid.major=element_line(colour=NA),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        panel.grid.minor = element_blank(),
+        legend.box.background = element_rect(color="black"))
 
 
-for (i in 3:33) {
-  ypredictfh[,i+31]=ypredictfh[,i]-ypredictfh[,2]
-  ypredictfh[,i+31]=abs(ypredictfh[,i+31])
-  dypredictfh[i-2,1]<-mean(ypredictfh[,i+31])
-}
+data3<-ypredictfh[,c(1,114)]
+r3<-cor(data3[,1],data3[,2],method="pearson")
+r3
+ggplot(data3)+
+  geom_point(aes(x=ageadj,y=predictfh),pch=1,color="#0d7091",size=1)+
+  geom_smooth(aes(x=ageadj,y=predictfh),method="lm",color="red",fill="grey",se=TRUE)+
+  scale_x_continuous(name="Calendar age",limits=c(40,90),breaks=seq(40,90,10))+
+  scale_y_continuous(name="Predicted age",limits=c(40,90),breaks=seq(40,90,10))+
+  theme_bw() +
+  theme(panel.grid.major=element_line(colour=NA),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        panel.grid.minor = element_blank(),
+        legend.box.background = element_rect(color="black"))
 
-dypredict<-cbind(dypredictphase1,dypredictphase2,dypredictfh)
-write.csv(dypredict,"dypredict.csv")
 
-write.csv(ypredictphase1,"ypredictphase1.csv")
-write.csv(ypredictphase2,"ypredictphase2.csv")
-write.csv(ypredictfh,"ypredictfh.csv")
-ypredictphase1allnow<- predict(cvfit,newx=xtestphase1all, s=lambdalist[31,4])
-ypredictphase1all<-cbind(ypredictphase1all,ypredictphase1allnow)
-write.csv(ypredictphase1all,"1ypredictphase1all.csv")
+
 
 
 
